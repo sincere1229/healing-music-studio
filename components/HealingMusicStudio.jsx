@@ -654,7 +654,39 @@ function bufferToWav(abuf) {
 /* =====================================================
    サムネイル生成 (1280×720)
    ===================================================== */
-function drawThumbnail({ freqs, use, ambients, durationLabel, mood, uploadedImg, width = 1280, height = 720 }) {
+// 長いテキストを指定幅で複数行に折り返して描画するヘルパー
+function fillWrappedText(c, text, x, y, maxWidth, lineHeight, maxLines = 2) {
+  if (!text) return y;
+  const chars = Array.from(text);
+  const lines = [];
+  let line = "";
+  for (const ch of chars) {
+    const test = line + ch;
+    if (c.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = ch;
+      if (lines.length >= maxLines - 1) break;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  // 残りの文字を最終行に詰める(省略しない・最大行数に収める)
+  if (lines.length === maxLines) {
+    const used = lines.join("").length;
+    const rest = chars.slice(used).join("");
+    if (rest) lines[lines.length - 1] += rest;
+  }
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => c.fillText(l, x, startY + i * lineHeight));
+  return startY + (lines.length - 1) * lineHeight;
+}
+
+function drawThumbnail({
+  freqs, use, ambients, durationLabel, mood, uploadedImg, width = 1280, height = 720,
+  subtitle = "", supplement = "", brandName = "Twinkle Lab",
+  charIcon = null, charEnabled = false, charSize = 0.16,
+}) {
   const W = width, H = height;
   const cv = document.createElement("canvas");
   cv.width = W;
@@ -751,7 +783,9 @@ function drawThumbnail({ freqs, use, ambients, durationLabel, mood, uploadedImg,
   c.textAlign = "center";
   c.fillStyle = "#E8C36A";
   c.font = `500 ${26 * scale}px ${serif}`;
-  c.fillText("H E A L I N G   M U S I C   S T U D I O", W / 2, H * (square ? 0.075 : 0.089));
+  // ③ ブランド名(全角スペースで字間を空けて表示)
+  const brandDisplay = (brandName || "Twinkle Lab").trim().split("").join("\u200a ");
+  c.fillText(brandDisplay.toUpperCase(), W / 2, H * (square ? 0.075 : 0.089));
 
   const freqText = freqs.length ? `${freqs.join("Hz・")}Hz` : "Healing";
   const fgrad = c.createLinearGradient(W / 2 - 300 * scale, 0, W / 2 + 300 * scale, 0);
@@ -764,24 +798,48 @@ function drawThumbnail({ freqs, use, ambients, durationLabel, mood, uploadedImg,
   c.shadowBlur = 18;
   c.fillText(freqText, W / 2, H * (square ? 0.40 : 0.42));
 
+  // ① サブタイトル:未入力なら「用途+ヒーリングミュージック」を自動生成
   const useObj = USES.find((u) => u.id === use) || USES[0];
+  const subtitleText = (subtitle || "").trim() || `${useObj.label}ヒーリングミュージック`;
   c.fillStyle = "#FFFFFF";
   c.font = `700 ${(square ? 54 : 62) * scale}px ${serif}`;
-  c.fillText(`${useObj.label}ヒーリングミュージック`, W / 2, H * (square ? 0.55 : 0.58));
   c.shadowBlur = 0;
+  fillWrappedText(c, subtitleText, W / 2, H * (square ? 0.55 : 0.58), W * (square ? 0.86 : 0.82), (square ? 64 : 72) * scale, 2);
 
+  // ② 補足テキスト:未入力なら「環境音+長さ」を自動生成
   const ambLabels = ambients
     .map((a) => (AMBIENTS.find((x) => x.id === a) || {}).label)
     .filter(Boolean)
     .slice(0, 3)
     .join("・");
+  const supplementText = (supplement || "").trim() || [ambLabels && `${ambLabels}の音`, durationLabel].filter(Boolean).join("  ｜  ");
   c.fillStyle = "#D9CDEB";
   c.font = `500 ${34 * scale}px ${serif}`;
-  c.fillText([ambLabels && `${ambLabels}の音`, durationLabel].filter(Boolean).join("  ｜  "), W / 2, H * (square ? 0.66 : 0.70));
+  c.fillText(supplementText, W / 2, H * (square ? 0.66 : 0.70));
 
   c.fillStyle = "rgba(232,195,106,0.9)";
   c.font = `500 ${24 * scale}px ${serif}`;
-  c.fillText("✦ Twinkle Lab ✦", W / 2, H * (square ? 0.94 : 0.93));
+  c.fillText(`✦ ${(brandName || "Twinkle Lab").trim()} ✦`, W / 2, H * (square ? 0.94 : 0.93));
+
+  // ④ キャラクターアイコン(右下に表示)
+  if (charEnabled && charIcon) {
+    const size = Math.min(W, H) * Math.max(0.06, Math.min(0.4, charSize));
+    const margin = Math.min(W, H) * 0.03;
+    const r = Math.max(W / charIcon.width, H / charIcon.height) === Infinity ? 1 : size / Math.max(charIcon.width, charIcon.height);
+    const iw = charIcon.width * r, ih = charIcon.height * r;
+    const x = W - margin - iw, y = H - margin - ih;
+    // ふんわりした光の縁取り
+    c.save();
+    const glow = c.createRadialGradient(x + iw / 2, y + ih / 2, 0, x + iw / 2, y + ih / 2, Math.max(iw, ih) * 0.75);
+    glow.addColorStop(0, "rgba(167,139,250,0.35)");
+    glow.addColorStop(1, "transparent");
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(x + iw / 2, y + ih / 2, Math.max(iw, ih) * 0.75, 0, Math.PI * 2);
+    c.fill();
+    c.drawImage(charIcon, x, y, iw, ih);
+    c.restore();
+  }
 
   return cv;
 }
@@ -911,7 +969,7 @@ function recordVideo({ audioBuffer, imageCanvas, duration, onProgress }) {
    YouTube メタデータ & AI音楽プロンプト生成
    (医療効果を断定しない表現で統一)
    ===================================================== */
-function buildMetadata({ freqs, use, ambients, instrument, durationLabel, mood }) {
+function buildMetadata({ freqs, use, ambients, instrument, durationLabel, mood, subtitle = "", supplement = "", brandName = "Twinkle Lab" }) {
   const useObj = USES.find((u) => u.id === use) || USES[0];
   const moodObj = MOODS.find((m) => m.id === mood) || MOODS[0];
   const freqText = freqs.length ? `【${freqs.join("Hz・")}Hz】` : "";
@@ -920,11 +978,24 @@ function buildMetadata({ freqs, use, ambients, instrument, durationLabel, mood }
     .filter(Boolean);
   const ambText = ambLabels.length ? `｜${ambLabels.slice(0, 2).join("・")}の音付き` : "";
   const instObj = INSTRUMENTS.find((i) => i.id === instrument);
+  const brand = (brandName || "Twinkle Lab").trim() || "Twinkle Lab";
+  const subtitleText = (subtitle || "").trim();
+  const supplementText = (supplement || "").trim();
 
-  const title = `${freqText}${useObj.title}${moodObj.label}ヒーリングミュージック${ambText}・${durationLabel}`;
+  // ⑤ YouTubeタイトル候補(3案):メイン案+表現を変えた2案
+  const baseLabel = subtitleText || `${useObj.title}${moodObj.label}ヒーリングミュージック`;
+  const tail = supplementText || [ambLabels.length ? `${ambLabels.slice(0, 2).join("・")}の音` : "", durationLabel].filter(Boolean).join("｜");
+
+  const titles = [
+    `${freqText}${baseLabel}${tail ? `｜${tail}` : ""}`,
+    `${freqText}${subtitleText || `${moodObj.label}な周波数`}｜睡眠・瞑想・リラックス${durationLabel ? `(${durationLabel})` : ""}`,
+    `${useObj.title}${subtitleText ? subtitleText + "｜" : ""}${freqs.length ? freqs.join("Hz・") + "Hz" : "ヒーリング"}サウンド${ambLabels.length ? `｜${ambLabels[0]}の音` : ""}`,
+  ];
+  const title = titles[0];
 
   const description = [
     `${useObj.label}・リラックスタイムにお使いいただけるヒーリングBGMです。`,
+    subtitleText ? `今回のテーマ:「${subtitleText}」` : "",
     freqs.length
       ? `ソルフェジオ周波数(${freqs.join("Hz / ")}Hz)をベースに、${ambLabels.length ? ambLabels.join("・") + "の環境音と" : ""}${instObj ? instObj.label + "の音色を" : "やさしい音色を"}重ねた${moodObj.label}な雰囲気の音源です。`
       : "",
@@ -940,9 +1011,9 @@ function buildMetadata({ freqs, use, ambients, instrument, durationLabel, mood }
     "",
     "#ヒーリングミュージック #リラックスBGM" + (freqs[0] ? ` #${freqs[0]}hz` : ""),
     "",
-    "🌙 Healing Music Studio by Twinkle Lab",
+    `🌙 Healing Music Studio by ${brand}`,
   ]
-    .filter((l) => l !== null)
+    .filter((l) => l !== "")
     .join("\n");
 
   const tags = [
@@ -968,14 +1039,14 @@ function buildMetadata({ freqs, use, ambients, instrument, durationLabel, mood }
     ...freqs.map((f) => `${f}hz`),
     "瞑想music",
     "spiritual",
-    "TwinkleLab",
+    brand.replace(/\s/g, ""),
   ]
     .slice(0, 10)
     .map((t) => `#${t}`)
     .join(" ");
 
   const instagramCaption = [
-    `🌙 ${freqText}${moodObj.label}な${useObj.title}ヒーリングミュージック`,
+    `🌙 ${freqText}${subtitleText || `${moodObj.label}な${useObj.title}ヒーリングミュージック`}`,
     "",
     freqs.length
       ? `ソルフェジオ周波数${freqs.join("Hz・")}Hzと${ambLabels.length ? ambLabels.join("・") + "の音" : "やさしい音色"}を重ねた、${useObj.label}タイムにおすすめの一曲です✨`
@@ -989,7 +1060,7 @@ function buildMetadata({ freqs, use, ambients, instrument, durationLabel, mood }
     igHashtags,
   ].join("\n");
 
-  return { title, description, tags, instagramCaption };
+  return { title, titles, description, tags, instagramCaption };
 }
 
 function buildMusicPrompt({ freqs, use, ambients, instrument, durationLabel, mood }) {
@@ -1044,6 +1115,17 @@ export default function HealingMusicStudio() {
   const [uploadedImg, setUploadedImg] = useState(null);
   const [uploadedName, setUploadedName] = useState("");
 
+  // ① サムネイルサブタイトル ② 補足テキスト ③ ブランド名
+  const [subtitle, setSubtitle] = useState("");
+  const [supplement, setSupplement] = useState("");
+  const [brandName, setBrandName] = useState("Aura Garden");
+
+  // ④ キャラクターアイコン(Serena等)
+  const [charIcon, setCharIcon] = useState(null);
+  const [charIconName, setCharIconName] = useState("");
+  const [charEnabled, setCharEnabled] = useState(false);
+  const [charSize, setCharSize] = useState(0.16);
+
   const [phase, setPhase] = useState("idle"); // idle | working | done | error
   const [step, setStep] = useState("");
   const [videoProgress, setVideoProgress] = useState(0);
@@ -1068,15 +1150,21 @@ export default function HealingMusicStudio() {
   const toggle = (arr, v, set) =>
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
-  const handleUpload = (e) => {
+  const handleUpload = (e, kind = "bg") => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     const r = new FileReader();
     r.onload = () => {
       const img = new Image();
       img.onload = () => {
-        setUploadedImg(img);
-        setUploadedName(f.name);
+        if (kind === "char") {
+          setCharIcon(img);
+          setCharIconName(f.name);
+          setCharEnabled(true);
+        } else {
+          setUploadedImg(img);
+          setUploadedName(f.name);
+        }
       };
       img.src = r.result;
     };
@@ -1099,13 +1187,14 @@ export default function HealingMusicStudio() {
     setResult(null);
     setVideoProgress(0);
     try {
-      const opts = { freqs, use, ambients, instrument, durationLabel, mood, duration: durationSec };
+      const opts = { freqs, use, ambients, instrument, durationLabel, mood, duration: durationSec, subtitle, supplement, brandName };
+      const thumbExtra = { uploadedImg, charIcon, charEnabled, charSize };
 
       // ① サムネイル(YouTube用16:9 + Instagram用1:1)
       setStep("thumb");
-      const thumbCanvas = drawThumbnail({ ...opts, uploadedImg });
+      const thumbCanvas = drawThumbnail({ ...opts, ...thumbExtra });
       const thumbUrl = thumbCanvas.toDataURL("image/png");
-      const igThumbCanvas = drawThumbnail({ ...opts, uploadedImg, width: 1080, height: 1080 });
+      const igThumbCanvas = drawThumbnail({ ...opts, ...thumbExtra, width: 1080, height: 1080 });
       const igThumbUrl = igThumbCanvas.toDataURL("image/png");
 
       // ② 音声生成(簡易合成 / Phase 2 で AI音楽API に差替)
@@ -1286,10 +1375,101 @@ export default function HealingMusicStudio() {
           ))}
         </Section>
 
-        <Section num="七" title="背景画像(任意)" sub="未設定の場合は、夜空と月のサムネイルを自動生成します">
+        <Section num="七" title="サムネイル文言・ブランド設定(任意)" sub="未入力の場合は、選択した内容から自動でテキストを生成します">
+          <div className="w-full grid gap-3">
+            <div>
+              <label className="block text-xs mb-1" style={{ color: T.sub }}>① サムネイルサブタイトル(例:不安を手放す / 愛と調和 / 直感を高める / 深い眠りへ)</label>
+              <input
+                type="text"
+                value={subtitle}
+                onChange={(e) => setSubtitle(e.target.value)}
+                placeholder={`未入力時:「${USES.find((u) => u.id === use)?.label || ""}ヒーリングミュージック」`}
+                className="w-full rounded-xl text-sm"
+                style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: `1px solid ${T.borderSoft}`, color: T.text }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs mb-1" style={{ color: T.sub }}>② サムネイル補足テキスト(例:森の音｜10分 / 雨音｜60分 / 睡眠用BGM / 瞑想用)</label>
+              <input
+                type="text"
+                value={supplement}
+                onChange={(e) => setSupplement(e.target.value)}
+                placeholder="未入力時:選択した環境音・長さから自動生成"
+                className="w-full rounded-xl text-sm"
+                style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: `1px solid ${T.borderSoft}`, color: T.text }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs mb-1" style={{ color: T.sub }}>③ ブランド名</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {["Aura Garden", "Twinkle Star Oracle", "Healing Music Studio"].map((b) => (
+                  <Chip key={b} on={brandName === b} onClick={() => setBrandName(b)}>{b}</Chip>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                placeholder="Aura Garden"
+                className="w-full rounded-xl text-sm"
+                style={{ padding: "10px 14px", background: "rgba(0,0,0,0.25)", border: `1px solid ${T.borderSoft}`, color: T.text }}
+              />
+            </div>
+          </div>
+        </Section>
+
+        <Section num="八" title="キャラクターアイコン(任意)" sub="Serenaなどのキャラクター画像をアップロードすると、サムネイル右下に表示できます">
+          <div className="w-full grid gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="rounded-xl cursor-pointer text-sm" style={{ padding: "12px 18px", border: `1px dashed ${T.border}`, color: T.sub }}>
+                🧚 アイコン画像をアップロード
+                <input type="file" accept="image/*" onChange={(e) => handleUpload(e, "char")} style={{ display: "none" }} />
+              </label>
+              {charIcon && (
+                <span className="flex items-center gap-2 text-xs" style={{ color: T.accent }}>
+                  ✓ {charIconName}
+                  <button onClick={() => { setCharIcon(null); setCharIconName(""); setCharEnabled(false); }} style={{ color: T.sub, textDecoration: "underline" }}>削除</button>
+                </span>
+              )}
+            </div>
+
+            {charIcon && (
+              <>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setCharEnabled((v) => !v)}
+                    className="rounded-full text-sm"
+                    style={{ padding: "8px 18px", border: `1px solid ${charEnabled ? T.chipOnBorder : T.borderSoft}`, background: charEnabled ? T.chipOn : "rgba(255,255,255,0.02)", color: charEnabled ? T.text : T.sub, fontWeight: charEnabled ? 600 : 400 }}
+                  >
+                    {charEnabled ? "✓ サムネに表示する(ON)" : "サムネに表示しない(OFF)"}
+                  </button>
+                </div>
+
+                {charEnabled && (
+                  <div>
+                    <label className="block text-xs mb-2" style={{ color: T.sub }}>アイコンサイズ</label>
+                    <input
+                      type="range"
+                      min="0.08"
+                      max="0.36"
+                      step="0.01"
+                      value={charSize}
+                      onChange={(e) => setCharSize(parseFloat(e.target.value))}
+                      className="w-full"
+                      style={{ accentColor: T.accent }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </Section>
+        <Section num="九" title="背景画像(任意)" sub="未設定の場合は、夜空と月のサムネイルを自動生成します">
           <label className="rounded-xl cursor-pointer text-sm" style={{ padding: "12px 18px", border: `1px dashed ${T.border}`, color: T.sub }}>
             📷 画像をアップロード
-            <input type="file" accept="image/*" onChange={handleUpload} style={{ display: "none" }} />
+            <input type="file" accept="image/*" onChange={(e) => handleUpload(e, "bg")} style={{ display: "none" }} />
           </label>
           {uploadedImg && (
             <span className="flex items-center gap-2 text-xs" style={{ color: T.accent }}>
@@ -1389,8 +1569,23 @@ export default function HealingMusicStudio() {
             <div className="rounded-2xl grid gap-4" style={{ background: T.panel, border: `1px solid ${T.borderSoft}`, padding: 20 }}>
               <h2 style={{ fontFamily: '"Shippori Mincho", serif', fontSize: 18, color: T.text, fontWeight: 700 }}>▶ YouTube 投稿用テキスト</h2>
 
+              {/* ⑤ YouTubeタイトル候補 3案 */}
+              <div>
+                <span className="text-sm" style={{ color: T.accent }}>タイトル候補(3案)</span>
+                <div className="grid gap-2 mt-1">
+                  {result.meta.titles.map((t, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <pre className="flex-1 rounded-xl text-sm whitespace-pre-wrap" style={{ background: "rgba(0,0,0,0.25)", border: `1px solid ${T.borderSoft}`, padding: "10px 12px", color: T.text, fontFamily: "inherit", margin: 0 }}>{t}</pre>
+                      <button onClick={() => copy(`title${i}`, t)} className="text-xs rounded-full shrink-0" style={{ padding: "4px 12px", border: `1px solid ${T.borderSoft}`, color: copied === `title${i}` ? T.accent : T.sub }}>
+                        {copied === `title${i}` ? "✓" : "コピー"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ⑥ 説明文・タグ */}
               {[
-                ["title", "タイトル", result.meta.title],
                 ["desc", "説明文", result.meta.description],
                 ["tags", "タグ", result.meta.tags.join(", ")],
               ].map(([key, label, text]) => (
