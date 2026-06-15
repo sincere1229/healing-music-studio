@@ -57,3 +57,4 @@ healing-music-studio/
 ├── tailwind.config.js
 └── postcss.config.js
 ```
+
