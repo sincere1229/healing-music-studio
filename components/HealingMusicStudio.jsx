@@ -1099,6 +1099,45 @@ function buildMusicPrompt({ freqs, use, ambients, instrument, durationLabel, moo
   ].filter(Boolean).join("\n");
 }
 
+/* ---------- 共通UIパーツ(トップレベルで定義し、再生成によるフォーカス喪失を防止) ---------- */
+function Chip({ T, on, onClick, children, disabled, title }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="rounded-full text-sm transition-all"
+      style={{
+        padding: "9px 16px",
+        border: `1px solid ${on ? T.chipOnBorder : T.borderSoft}`,
+        background: on ? T.chipOn : "rgba(255,255,255,0.02)",
+        color: disabled ? "rgba(160,150,190,0.45)" : on ? T.text : T.sub,
+        boxShadow: on ? `0 0 14px ${T.chipOn}` : "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontWeight: on ? 600 : 400,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Section({ T, num, title, sub, children }) {
+  return (
+    <section
+      className="rounded-2xl"
+      style={{ background: T.panel, border: `1px solid ${T.borderSoft}`, padding: "20px 20px 22px" }}
+    >
+      <div className="flex items-baseline gap-3 mb-1">
+        <span style={{ color: T.accent, fontFamily: '"Shippori Mincho", serif', fontSize: 14, letterSpacing: "0.15em" }}>{num}</span>
+        <h2 style={{ color: T.text, fontFamily: '"Shippori Mincho", serif', fontSize: 19, fontWeight: 700 }}>{title}</h2>
+      </div>
+      {sub && <p className="mb-3" style={{ color: T.sub, fontSize: 12.5 }}>{sub}</p>}
+      <div className="flex flex-wrap gap-2 mt-2">{children}</div>
+    </section>
+  );
+}
+
 /* =====================================================
    メインコンポーネント
    ===================================================== */
@@ -1243,40 +1282,6 @@ export default function HealingMusicStudio() {
 
   const mb = (n) => (n / 1024 / 1024).toFixed(1) + " MB";
 
-  const Chip = ({ on, onClick, children, disabled, title }) => (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className="rounded-full text-sm transition-all"
-      style={{
-        padding: "9px 16px",
-        border: `1px solid ${on ? T.chipOnBorder : T.borderSoft}`,
-        background: on ? T.chipOn : "rgba(255,255,255,0.02)",
-        color: disabled ? "rgba(160,150,190,0.45)" : on ? T.text : T.sub,
-        boxShadow: on ? `0 0 14px ${T.chipOn}` : "none",
-        cursor: disabled ? "not-allowed" : "pointer",
-        fontWeight: on ? 600 : 400,
-      }}
-    >
-      {children}
-    </button>
-  );
-
-  const Section = ({ num, title, sub, children }) => (
-    <section
-      className="rounded-2xl"
-      style={{ background: T.panel, border: `1px solid ${T.borderSoft}`, padding: "20px 20px 22px" }}
-    >
-      <div className="flex items-baseline gap-3 mb-1">
-        <span style={{ color: T.accent, fontFamily: '"Shippori Mincho", serif', fontSize: 14, letterSpacing: "0.15em" }}>{num}</span>
-        <h2 style={{ color: T.text, fontFamily: '"Shippori Mincho", serif', fontSize: 19, fontWeight: 700 }}>{title}</h2>
-      </div>
-      {sub && <p className="mb-3" style={{ color: T.sub, fontSize: 12.5 }}>{sub}</p>}
-      <div className="flex flex-wrap gap-2 mt-2">{children}</div>
-    </section>
-  );
-
   const stepDefs = [
     { id: "thumb", label: "サムネイル画像を生成" },
     { id: "audio", label: "音源を生成(簡易合成エンジン)" },
@@ -1322,60 +1327,60 @@ export default function HealingMusicStudio() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-7 grid gap-4">
-        <Section num="一" title="用途を選ぶ" sub="どんなシーンで聴くBGMを作りますか?">
+        <Section T={T} num="一" title="用途を選ぶ" sub="どんなシーンで聴くBGMを作りますか?">
           {USES.map((u) => (
-            <Chip key={u.id} on={use === u.id} onClick={() => setUse(u.id)}>
+            <Chip T={T} key={u.id} on={use === u.id} onClick={() => setUse(u.id)}>
               {u.emoji} {u.label}
             </Chip>
           ))}
         </Section>
 
-        <Section num="二" title="ソルフェジオ周波数" sub="複数選択できます。※リラックス用途のBGMとしてお楽しみいただくもので、医療的な効果を保証するものではありません">
+        <Section T={T} num="二" title="ソルフェジオ周波数" sub="複数選択できます。※リラックス用途のBGMとしてお楽しみいただくもので、医療的な効果を保証するものではありません">
           {FREQS.map((f) => (
-            <Chip key={f.hz} on={freqs.includes(f.hz)} onClick={() => toggle(freqs, f.hz, setFreqs)}>
+            <Chip T={T} key={f.hz} on={freqs.includes(f.hz)} onClick={() => toggle(freqs, f.hz, setFreqs)}>
               {f.hz}Hz <span style={{ opacity: 0.65, fontSize: 11 }}>{f.note}</span>
             </Chip>
           ))}
         </Section>
 
-        <Section num="三" title="環境音" sub="複数選択できます。重ねると深みが出ます">
+        <Section T={T} num="三" title="環境音" sub="複数選択できます。重ねると深みが出ます">
           {AMBIENTS.map((a) => (
-            <Chip key={a.id} on={ambients.includes(a.id)} onClick={() => toggle(ambients, a.id, setAmbients)}>
+            <Chip T={T} key={a.id} on={ambients.includes(a.id)} onClick={() => toggle(ambients, a.id, setAmbients)}>
               {a.emoji} {a.label}
             </Chip>
           ))}
         </Section>
 
-        <Section num="四" title="楽器" sub="メインの音色を1つ選びます">
+        <Section T={T} num="四" title="楽器" sub="メインの音色を1つ選びます">
           {INSTRUMENTS.map((i) => (
-            <Chip key={i.id} on={instrument === i.id} onClick={() => setInstrument(i.id)}>
+            <Chip T={T} key={i.id} on={instrument === i.id} onClick={() => setInstrument(i.id)}>
               {i.emoji} {i.label}
             </Chip>
           ))}
         </Section>
 
-        <Section num="五" title="長さ" sub="毎日投稿には10分がおすすめです。30分〜120分はPhase 2(サーバー生成)で対応予定">
+        <Section T={T} num="五" title="長さ" sub="毎日投稿には10分がおすすめです。30分〜120分はPhase 2(サーバー生成)で対応予定">
           {DURATIONS.map((d) => (
-            <Chip key={d.sec} on={durationSec === d.sec} onClick={() => setDurationSec(d.sec)}>
+            <Chip T={T} key={d.sec} on={durationSec === d.sec} onClick={() => setDurationSec(d.sec)}>
               {d.label}{d.sub ? ` (${d.sub})` : ""}
             </Chip>
           ))}
           {DURATIONS_P2.map((l) => (
-            <Chip key={l} disabled title="Phase 2 で対応予定">
+            <Chip T={T} key={l} disabled title="Phase 2 で対応予定">
               {l} 🔒
             </Chip>
           ))}
         </Section>
 
-        <Section num="六" title="雰囲気" sub="サムネイルの配色とタイトル文言に反映されます">
+        <Section T={T} num="六" title="雰囲気" sub="サムネイルの配色とタイトル文言に反映されます">
           {MOODS.map((m) => (
-            <Chip key={m.id} on={mood === m.id} onClick={() => setMood(m.id)}>
+            <Chip T={T} key={m.id} on={mood === m.id} onClick={() => setMood(m.id)}>
               {m.label}
             </Chip>
           ))}
         </Section>
 
-        <Section num="七" title="サムネイル文言・ブランド設定(任意)" sub="未入力の場合は、選択した内容から自動でテキストを生成します">
+        <Section T={T} num="七" title="サムネイル文言・ブランド設定(任意)" sub="未入力の場合は、選択した内容から自動でテキストを生成します">
           <div className="w-full grid gap-3">
             <div>
               <label className="block text-xs mb-1" style={{ color: T.sub }}>① サムネイルサブタイトル(例:不安を手放す / 愛と調和 / 直感を高める / 深い眠りへ)</label>
@@ -1405,7 +1410,7 @@ export default function HealingMusicStudio() {
               <label className="block text-xs mb-1" style={{ color: T.sub }}>③ ブランド名</label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {["Aura Garden", "Twinkle Star Oracle", "Healing Music Studio"].map((b) => (
-                  <Chip key={b} on={brandName === b} onClick={() => setBrandName(b)}>{b}</Chip>
+                  <Chip T={T} key={b} on={brandName === b} onClick={() => setBrandName(b)}>{b}</Chip>
                 ))}
               </div>
               <input
@@ -1420,7 +1425,7 @@ export default function HealingMusicStudio() {
           </div>
         </Section>
 
-        <Section num="八" title="キャラクターアイコン(任意)" sub="Serenaなどのキャラクター画像をアップロードすると、サムネイル右下に表示できます">
+        <Section T={T} num="八" title="キャラクターアイコン(任意)" sub="Serenaなどのキャラクター画像をアップロードすると、サムネイル右下に表示できます">
           <div className="w-full grid gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <label className="rounded-xl cursor-pointer text-sm" style={{ padding: "12px 18px", border: `1px dashed ${T.border}`, color: T.sub }}>
@@ -1466,7 +1471,7 @@ export default function HealingMusicStudio() {
             )}
           </div>
         </Section>
-        <Section num="九" title="背景画像(任意)" sub="未設定の場合は、夜空と月のサムネイルを自動生成します">
+        <Section T={T} num="九" title="背景画像(任意)" sub="未設定の場合は、夜空と月のサムネイルを自動生成します">
           <label className="rounded-xl cursor-pointer text-sm" style={{ padding: "12px 18px", border: `1px dashed ${T.border}`, color: T.sub }}>
             📷 画像をアップロード
             <input type="file" accept="image/*" onChange={(e) => handleUpload(e, "bg")} style={{ display: "none" }} />
