@@ -109,12 +109,14 @@ const AMBIENTS = [
 ];
 
 const INSTRUMENTS = [
+  { id: "none", label: "楽器なし", emoji: "🔇" },
   { id: "pad", label: "シンセパッド", emoji: "🎹" },
   { id: "piano", label: "ピアノ", emoji: "🎼" },
   { id: "strings", label: "ストリングス", emoji: "🎻" },
   { id: "harp", label: "ハープ", emoji: "🪕" },
   { id: "flute", label: "フルート", emoji: "🪈" },
   { id: "koto", label: "琴(純和風)", emoji: "🎌" },
+  { id: "musicbox", label: "オルゴール", emoji: "🎵" },
   { id: "ambient", label: "アンビエント", emoji: "🌌" },
 ];
 
@@ -203,7 +205,7 @@ function chirp(ctx, out, t, vol = 0.028) {
   o.stop(t + 0.45);
 }
 
-async function renderAudio({ freqs, ambients, instrument, duration }) {
+async function renderAudio({ freqs, ambients, instrument, duration, uploadedMp3Buffer, mp3Vol, binauralType, binauralVol, useFreqs, useAmbients }) {
   const sr = 44100;
   const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   if (!OAC) throw new Error("この端末では音声生成(OfflineAudioContext)が利用できません。");
@@ -223,9 +225,44 @@ async function renderAudio({ freqs, ambients, instrument, duration }) {
   master.gain.linearRampToValueAtTime(0, duration);
   master.connect(comp);
 
+  /* --- アップロードMP3音源 --- */
+  if (uploadedMp3Buffer) {
+    const mp3Gain = ctx.createGain();
+    mp3Gain.gain.value = (mp3Vol || 80) / 100;
+    mp3Gain.connect(master);
+    let offset = 0;
+    while (offset < duration) {
+      const src = ctx.createBufferSource();
+      src.buffer = uploadedMp3Buffer;
+      src.connect(mp3Gain);
+      src.start(offset);
+      offset += uploadedMp3Buffer.duration;
+    }
+  }
+
+  /* --- バイノーラルビート --- */
+  if (binauralType && binauralType !== "none") {
+    const freqMap = { alpha: 10, theta: 6, delta: 2 };
+    const diff = freqMap[binauralType] || 10;
+    const base = 200;
+    const merger = ctx.createChannelMerger(2);
+    const bGain = ctx.createGain();
+    bGain.gain.value = ((binauralVol || 25) / 100) * 0.12;
+    merger.connect(bGain);
+    bGain.connect(comp);
+    const lo = ctx.createOscillator(); lo.frequency.value = base; lo.type = "sine";
+    const ro = ctx.createOscillator(); ro.frequency.value = base + diff; ro.type = "sine";
+    const lg = ctx.createGain(); lg.gain.value = 1;
+    const rg = ctx.createGain(); rg.gain.value = 1;
+    lo.connect(lg); ro.connect(rg);
+    lg.connect(merger, 0, 0); rg.connect(merger, 0, 1);
+    lo.start(0); ro.start(0); lo.stop(duration); ro.stop(duration);
+  }
+
   /* --- ソルフェジオ周波数トーン --- */
-  const n = Math.max(1, freqs.length);
-  freqs.forEach((f, idx) => {
+  const activeFreqs = useFreqs ? freqs : [];
+  const n = Math.max(1, activeFreqs.length);
+  activeFreqs.forEach((f, idx) => {
     [0, 1].forEach((side) => {
       const o = ctx.createOscillator();
       o.type = "sine";
@@ -457,6 +494,38 @@ async function renderAudio({ freqs, ambients, instrument, duration }) {
     });
   }
 
+  /* --- オルゴール --- */
+  if (instrument === "musicbox") {
+    const mbScale = [523.25, 587.33, 659.25, 698.46, 783.99, 880, 987.77, 1046.5];
+    const mbPluck = (t, f, vol = 0.09) => {
+      const harmonics = [1, 2, 3, 4, 6];
+      harmonics.forEach((h, i) => {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = f * h;
+        const g = ctx.createGain();
+        const v = vol / (1 + i * 1.8);
+        g.gain.setValueAtTime(v, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 3.5 - i * 0.4);
+        o.connect(g);
+        g.connect(master);
+        o.start(t);
+        o.stop(t + 4);
+      });
+    };
+    const patterns = [
+      [0, 2, 4, 5, 7], [0, 3, 5, 7, 0], [4, 5, 7, 5, 4],
+    ];
+    let patIdx = 0;
+    scheduleEvents(duration, 2.5, 5.5, (t) => {
+      const pat = patterns[patIdx % patterns.length];
+      pat.forEach((idx, k) => {
+        mbPluck(t + k * 0.35, mbScale[idx % mbScale.length], 0.07 + Math.random() * 0.03);
+      });
+      patIdx++;
+    });
+  }
+
   /* --- 環境音レイヤー --- */
   const addFilteredNoise = (noiseType, setup, vol) => {
     const src = noiseSource(ctx, noiseType);
@@ -469,7 +538,8 @@ async function renderAudio({ freqs, ambients, instrument, duration }) {
     return g;
   };
 
-  ambients.forEach((a) => {
+  const activeAmbients = useAmbients ? ambients : [];
+  activeAmbients.forEach((a) => {
     if (a === "rain")
       addFilteredNoise("white", (src, g) => {
         const hp = ctx.createBiquadFilter();
@@ -1154,6 +1224,19 @@ export default function HealingMusicStudio() {
   const [uploadedImg, setUploadedImg] = useState(null);
   const [uploadedName, setUploadedName] = useState("");
 
+  // MP3アップロード
+  const [uploadedMp3, setUploadedMp3] = useState(null);
+  const [uploadedMp3Name, setUploadedMp3Name] = useState("");
+  const [mp3Vol, setMp3Vol] = useState(80);
+
+  // バイノーラルビート
+  const [binauralType, setBinauralType] = useState("none");
+  const [binauralVol, setBinauralVol] = useState(25);
+
+  // オン/オフ設定
+  const [useFreqs, setUseFreqs] = useState(true);
+  const [useAmbients, setUseAmbients] = useState(true);
+
   // ① サムネイルサブタイトル ② 補足テキスト ③ ブランド名
   const [subtitle, setSubtitle] = useState("");
   const [supplement, setSupplement] = useState("");
@@ -1192,6 +1275,13 @@ export default function HealingMusicStudio() {
   const handleUpload = (e, kind = "bg") => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    if (kind === "mp3") {
+      setUploadedMp3Name(f.name);
+      const reader = new FileReader();
+      reader.onload = (ev) => setUploadedMp3(ev.target.result);
+      reader.readAsArrayBuffer(f);
+      return;
+    }
     const r = new FileReader();
     r.onload = () => {
       const img = new Image();
@@ -1226,7 +1316,7 @@ export default function HealingMusicStudio() {
     setResult(null);
     setVideoProgress(0);
     try {
-      const opts = { freqs, use, ambients, instrument, durationLabel, mood, duration: durationSec, subtitle, supplement, brandName };
+      const opts = { freqs, use, ambients, instrument, durationLabel, mood, duration: durationSec, subtitle, supplement, brandName, useFreqs, useAmbients, binauralType, binauralVol };
       const thumbExtra = { uploadedImg, charIcon, charEnabled, charSize };
 
       // ① サムネイル(YouTube用16:9 + Instagram用1:1)
@@ -1236,10 +1326,17 @@ export default function HealingMusicStudio() {
       const igThumbCanvas = drawThumbnail({ ...opts, ...thumbExtra, width: 1080, height: 1080 });
       const igThumbUrl = igThumbCanvas.toDataURL("image/png");
 
-      // ② 音声生成(簡易合成 / Phase 2 で AI音楽API に差替)
+      // ② 音声生成
       setStep("audio");
-      await new Promise((r) => setTimeout(r, 60)); // UI反映
-      const audioBuffer = await renderAudio(opts);
+      await new Promise((r) => setTimeout(r, 60));
+      // MP3バッファをデコード
+      let uploadedMp3Buffer = null;
+      if (uploadedMp3) {
+        const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+        uploadedMp3Buffer = await tmpCtx.decodeAudioData(uploadedMp3.slice(0));
+        tmpCtx.close();
+      }
+      const audioBuffer = await renderAudio({ ...opts, uploadedMp3Buffer, mp3Vol });
       const wavBlob = bufferToWav(audioBuffer);
       const wavUrl = URL.createObjectURL(wavBlob);
       urlsRef.current.push(wavUrl);
@@ -1336,7 +1433,17 @@ export default function HealingMusicStudio() {
         </Section>
 
         <Section T={T} num="二" title="ソルフェジオ周波数" sub="複数選択できます。※リラックス用途のBGMとしてお楽しみいただくもので、医療的な効果を保証するものではありません">
-          {FREQS.map((f) => (
+          <div className="w-full flex items-center gap-3 mb-2">
+            <button
+              onClick={() => setUseFreqs(v => !v)}
+              className="rounded-full text-xs"
+              style={{ padding: "6px 14px", border: `1px solid ${useFreqs ? T.chipOnBorder : T.borderSoft}`, background: useFreqs ? T.chipOn : "transparent", color: useFreqs ? T.text : T.sub }}
+            >
+              {useFreqs ? "✓ ON" : "OFF"}
+            </button>
+            <span style={{ color: T.sub, fontSize: 12 }}>ソルフェジオ周波数を{useFreqs ? "使用する" : "使用しない"}</span>
+          </div>
+          {useFreqs && FREQS.map((f) => (
             <Chip T={T} key={f.hz} on={freqs.includes(f.hz)} onClick={() => toggle(freqs, f.hz, setFreqs)}>
               {f.hz}Hz <span style={{ opacity: 0.65, fontSize: 11 }}>{f.note}</span>
             </Chip>
@@ -1344,7 +1451,17 @@ export default function HealingMusicStudio() {
         </Section>
 
         <Section T={T} num="三" title="環境音" sub="複数選択できます。重ねると深みが出ます">
-          {AMBIENTS.map((a) => (
+          <div className="w-full flex items-center gap-3 mb-2">
+            <button
+              onClick={() => setUseAmbients(v => !v)}
+              className="rounded-full text-xs"
+              style={{ padding: "6px 14px", border: `1px solid ${useAmbients ? T.chipOnBorder : T.borderSoft}`, background: useAmbients ? T.chipOn : "transparent", color: useAmbients ? T.text : T.sub }}
+            >
+              {useAmbients ? "✓ ON" : "OFF"}
+            </button>
+            <span style={{ color: T.sub, fontSize: 12 }}>環境音を{useAmbients ? "使用する" : "使用しない"}</span>
+          </div>
+          {useAmbients && AMBIENTS.map((a) => (
             <Chip T={T} key={a.id} on={ambients.includes(a.id)} onClick={() => toggle(ambients, a.id, setAmbients)}>
               {a.emoji} {a.label}
             </Chip>
@@ -1482,6 +1599,60 @@ export default function HealingMusicStudio() {
               <button onClick={() => { setUploadedImg(null); setUploadedName(""); }} style={{ color: T.sub, textDecoration: "underline" }}>削除</button>
             </span>
           )}
+        </Section>
+
+        <Section T={T} num="十" title="MP3音源をアップロード(任意)" sub="お手持ちのピアノ曲などをミックスできます。著作権フリー素材をご使用ください">
+          <div className="w-full grid gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="rounded-xl cursor-pointer text-sm" style={{ padding: "12px 18px", border: `1px dashed ${T.border}`, color: T.sub }}>
+                🎵 MP3をアップロード
+                <input type="file" accept="audio/*" onChange={(e) => handleUpload(e, "mp3")} style={{ display: "none" }} />
+              </label>
+              {uploadedMp3Name && (
+                <span className="flex items-center gap-2 text-xs" style={{ color: T.accent }}>
+                  ✓ {uploadedMp3Name}
+                  <button onClick={() => { setUploadedMp3(null); setUploadedMp3Name(""); }} style={{ color: T.sub, textDecoration: "underline" }}>削除</button>
+                </span>
+              )}
+            </div>
+            {uploadedMp3 && (
+              <div>
+                <label className="block text-xs mb-2" style={{ color: T.sub }}>MP3音量 {mp3Vol}%</label>
+                <input
+                  type="range" min="0" max="100" step="1" value={mp3Vol}
+                  onChange={(e) => setMp3Vol(Number(e.target.value))}
+                  className="w-full" style={{ accentColor: T.accent }}
+                />
+              </div>
+            )}
+          </div>
+        </Section>
+
+        <Section T={T} num="十一" title="バイノーラルビート(任意)" sub="ヘッドフォン推奨。α波=リラックス / θ波=瞑想 / δ波=熟睡">
+          <div className="w-full grid gap-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: "none", label: "なし", emoji: "🔇" },
+                { id: "alpha", label: "α波 10Hz", emoji: "🌊" },
+                { id: "theta", label: "θ波 6Hz", emoji: "🧘" },
+                { id: "delta", label: "δ波 2Hz", emoji: "🌙" },
+              ].map((b) => (
+                <Chip T={T} key={b.id} on={binauralType === b.id} onClick={() => setBinauralType(b.id)}>
+                  {b.emoji} {b.label}
+                </Chip>
+              ))}
+            </div>
+            {binauralType !== "none" && (
+              <div>
+                <label className="block text-xs mb-2" style={{ color: T.sub }}>波動音量 {binauralVol}%</label>
+                <input
+                  type="range" min="5" max="60" step="1" value={binauralVol}
+                  onChange={(e) => setBinauralVol(Number(e.target.value))}
+                  className="w-full" style={{ accentColor: T.accent }}
+                />
+              </div>
+            )}
+          </div>
         </Section>
 
         {/* ===== 生成ボタン ===== */}
