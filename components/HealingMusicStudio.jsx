@@ -756,6 +756,7 @@ function drawThumbnail({
   freqs, use, ambients, durationLabel, mood, uploadedImg, width = 1280, height = 720,
   subtitle = "", supplement = "", brandName = "Twinkle Lab",
   charIcon = null, charEnabled = false, charSize = 0.16,
+  showThumbText = true,
 }) {
   const W = width, H = height;
   const cv = document.createElement("canvas");
@@ -836,6 +837,7 @@ function drawThumbnail({
 
   // ゴールドの罫線
   const marginX = W * 0.055, topY = H * (square ? 0.085 : 0.128), botY = H * (square ? 0.915 : 0.878);
+  if (showThumbText) {
   c.strokeStyle = "rgba(212,175,55,0.85)";
   c.lineWidth = 2;
   c.beginPath();
@@ -890,6 +892,7 @@ function drawThumbnail({
   c.fillStyle = "rgba(232,195,106,0.9)";
   c.font = `500 ${24 * scale}px ${serif}`;
   c.fillText(`✦ ${(brandName || "Twinkle Lab").trim()} ✦`, W / 2, H * (square ? 0.94 : 0.93));
+  } // end showThumbText
 
   // ④ キャラクターアイコン(右下に表示)
   if (charEnabled && charIcon) {
@@ -1247,6 +1250,7 @@ export default function HealingMusicStudio() {
   const [charIconName, setCharIconName] = useState("");
   const [charEnabled, setCharEnabled] = useState(false);
   const [charSize, setCharSize] = useState(0.16);
+  const [showThumbText, setShowThumbText] = useState(true);
 
   const [phase, setPhase] = useState("idle"); // idle | working | done | error
   const [step, setStep] = useState("");
@@ -1317,7 +1321,7 @@ export default function HealingMusicStudio() {
     setVideoProgress(0);
     try {
       const opts = { freqs, use, ambients, instrument, durationLabel, mood, duration: durationSec, subtitle, supplement, brandName, useFreqs, useAmbients, binauralType, binauralVol };
-      const thumbExtra = { uploadedImg, charIcon, charEnabled, charSize };
+      const thumbExtra = { uploadedImg, charIcon, charEnabled, charSize, showThumbText };
 
       // ① サムネイル(YouTube用16:9 + Instagram用1:1)
       setStep("thumb");
@@ -1598,6 +1602,20 @@ export default function HealingMusicStudio() {
               ✓ {uploadedName}
               <button onClick={() => { setUploadedImg(null); setUploadedName(""); }} style={{ color: T.sub, textDecoration: "underline" }}>削除</button>
             </span>
+          )}
+          {uploadedImg && (
+            <div className="w-full mt-2 flex items-center gap-3">
+              <button
+                onClick={() => setShowThumbText(v => !v)}
+                className="rounded-full text-xs"
+                style={{ padding: "6px 14px", border: `1px solid ${showThumbText ? T.chipOnBorder : T.borderSoft}`, background: showThumbText ? T.chipOn : "transparent", color: showThumbText ? T.text : T.sub }}
+              >
+                {showThumbText ? "✓ テキスト ON" : "テキスト OFF"}
+              </button>
+              <span style={{ color: T.sub, fontSize: 12 }}>
+                {showThumbText ? "サムネイルに文字を重ねる" : "画像のみ（文字なし）"}
+              </span>
+            </div>
           )}
         </Section>
 
