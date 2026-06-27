@@ -126,8 +126,10 @@ const DURATIONS = [
   { sec: 180, label: "3分", sub: "" },
   { sec: 300, label: "5分", sub: "" },
   { sec: 600, label: "10分", sub: "おすすめ" },
+  { sec: 1800, label: "30分", sub: "YouTube向け" },
+  { sec: 3600, label: "60分", sub: "睡眠・ヒーリング" },
 ];
-const DURATIONS_P2 = ["30分", "60分", "120分"];
+const DURATIONS_P2 = ["120分"];
 
 const MOODS = [
   { id: "mystic", label: "神秘的", hue: 270 },
@@ -1333,6 +1335,11 @@ export default function HealingMusicStudio() {
       // ② 音声生成
       setStep("audio");
       await new Promise((r) => setTimeout(r, 60));
+      // 長尺の場合は事前警告
+      if (durationSec >= 1800) {
+        setStep("audio_long");
+        await new Promise((r) => setTimeout(r, 100));
+      }
       // MP3バッファをデコード
       let uploadedMp3Buffer = null;
       if (uploadedMp3) {
@@ -1385,6 +1392,7 @@ export default function HealingMusicStudio() {
 
   const stepDefs = [
     { id: "thumb", label: "サムネイル画像を生成" },
+    { id: "audio_long", label: `⏳ ${durationLabel}の音源を生成中... しばらくお待ちください` },
     { id: "audio", label: "音源を生成(簡易合成エンジン)" },
     { id: "video", label: "画像と音声を結合して動画を録画(非対応端末は自動スキップ)" },
     { id: "meta", label: "YouTube用テキストを生成" },
@@ -1480,14 +1488,14 @@ export default function HealingMusicStudio() {
           ))}
         </Section>
 
-        <Section T={T} num="五" title="長さ" sub="毎日投稿には10分がおすすめです。30分〜120分はPhase 2(サーバー生成)で対応予定">
+        <Section T={T} num="五" title="長さ" sub="30分・60分はブラウザで生成できます。生成時間は選択した長さと同じ時間かかります（30分→約30分待機）">
           {DURATIONS.map((d) => (
             <Chip T={T} key={d.sec} on={durationSec === d.sec} onClick={() => setDurationSec(d.sec)}>
               {d.label}{d.sub ? ` (${d.sub})` : ""}
             </Chip>
           ))}
           {DURATIONS_P2.map((l) => (
-            <Chip T={T} key={l} disabled title="Phase 2 で対応予定">
+            <Chip T={T} key={l} disabled title="サーバー生成(Phase 2)で対応予定">
               {l} 🔒
             </Chip>
           ))}
@@ -1700,7 +1708,7 @@ export default function HealingMusicStudio() {
                 <div style={{ height: "100%", width: `${videoProgress * 100}%`, background: T.btnGrad, transition: "width .3s" }} />
               </div>
             )}
-            <p style={{ color: T.sub, fontSize: 11.5 }}>※動画は実時間で録画します({durationLabel}の動画 = 約{durationLabel}の待ち時間)。タブは閉じずにそのままお待ちください。{durationSec >= 600 && " 10分の場合は10分ほどかかります。別のタブやアプリに切り替えるとブラウザによっては録画が止まる場合があるため、このタブを開いたままお待ちください。"}</p>
+            <p style={{ color: T.sub, fontSize: 11.5 }}>※音声生成に{durationLabel}かかります。タブは閉じずにそのままお待ちください。{durationSec >= 1800 && <span style={{color:"#ffaa44"}}> ⚠️ {durationLabel}の場合、生成に{durationLabel}かかります。PCがスリープしないようにご注意ください。</span>}</p>
           </div>
         )}
 
